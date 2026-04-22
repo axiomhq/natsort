@@ -1,73 +1,105 @@
 package natsort
 
-import (
-	"cmp"
-	"regexp"
-	"strconv"
-)
-
-var natsortChunks = regexp.MustCompile(`(\d+|\D+)`)
-
-// Compare returns -1 if x < y according to natural order
-func Compare[T ~string](x, y T) int {
-	chunksX := natsortChunks.FindAllString(string(x), -1)
-	chunksY := natsortChunks.FindAllString(string(y), -1)
-
-	nChunksX := len(chunksX)
-	nChunksY := len(chunksY)
-
-	if nChunksX == 0 {
-		return cmp.Compare(nChunksX, nChunksY)
+func compareNumericChunk[T ~string](x T, xi int, y T, yi int) (result, xEnd, yEnd int) {
+	xEnd = xi
+	for xEnd < len(x) && x[xEnd] >= '0' && x[xEnd] <= '9' {
+		xEnd++
+	}
+	yEnd = yi
+	for yEnd < len(y) && y[yEnd] >= '0' && y[yEnd] <= '9' {
+		yEnd++
 	}
 
-	for i := range chunksX {
-		if i >= nChunksY {
+	xz, yz := xi, yi
+	for xz < xEnd && x[xz] == '0' {
+		xz++
+	}
+	for yz < yEnd && y[yz] == '0' {
+		yz++
+	}
+
+	xSig, ySig := xEnd-xz, yEnd-yz
+	if xSig != ySig {
+		if xSig < ySig {
+			return -1, xEnd, yEnd
+		}
+		return 1, xEnd, yEnd
+	}
+	for i := range xSig {
+		if x[xz+i] < y[yz+i] {
+			return -1, xEnd, yEnd
+		}
+		if x[xz+i] > y[yz+i] {
+			return 1, xEnd, yEnd
+		}
+	}
+	return 0, xEnd, yEnd
+}
+
+func compareAlphaChunk[T ~string](x T, xi int, y T, yi int) (result, xEnd, yEnd int) {
+	xEnd = xi
+	for xEnd < len(x) && (x[xEnd] < '0' || x[xEnd] > '9') {
+		xEnd++
+	}
+	yEnd = yi
+	for yEnd < len(y) && (y[yEnd] < '0' || y[yEnd] > '9') {
+		yEnd++
+	}
+
+	xLen, yLen := xEnd-xi, yEnd-yi
+	minLen := min(xLen, yLen)
+	for i := range minLen {
+		if x[xi+i] < y[yi+i] {
+			return -1, xEnd, yEnd
+		}
+		if x[xi+i] > y[yi+i] {
+			return 1, xEnd, yEnd
+		}
+	}
+	if xLen < yLen {
+		return -1, xEnd, yEnd
+	}
+	if xLen > yLen {
+		return 1, xEnd, yEnd
+	}
+	return 0, xEnd, yEnd
+}
+
+// Compare returns -1 if x < y, 0 if x == y, and 1 if x > y according to natural order.
+// Numeric segments are compared by value (leading zeros ignored), so "01" == "1" and "file9" < "file10".
+func Compare[T ~string](x, y T) int {
+	xi, yi := 0, 0
+	for {
+		if xi >= len(x) && yi >= len(y) {
+			return 0
+		}
+		if xi >= len(x) {
+			return -1
+		}
+		if yi >= len(y) {
 			return 1
 		}
 
-		xInt, aErr := strconv.Atoi(chunksX[i])
-		yInt, bErr := strconv.Atoi(chunksY[i])
+		xDigit := x[xi] >= '0' && x[xi] <= '9'
+		yDigit := y[yi] >= '0' && y[yi] <= '9'
 
-		// If both chunks are numeric, compare them as integers
-		if aErr == nil && bErr == nil {
-			if xInt == yInt {
-
-				switch {
-				case i == nChunksX-1 && i == nChunksY-1:
-					// both sides have the same number of chunks
-					return 0
-				case i == nChunksX-1:
-					// We reached the last chunk of A, thus B is greater than A
-					return -1
-				case i == nChunksY-1:
-					// We reached the last chunk of B, thus A is greater than B
-					return 1
-				}
-
-				continue
+		if xDigit && yDigit {
+			r, xn, yn := compareNumericChunk(x, xi, y, yi)
+			if r != 0 {
+				return r
 			}
-			return cmp.Compare(xInt, yInt)
-		}
-
-		// So far both strings are equal, continue to next chunk
-		if chunksX[i] == chunksY[i] {
-			switch {
-			case i == nChunksX-1 && i == nChunksY-1:
-				// both sides have the same number of chunks
-				return 0
-			case i == nChunksX-1:
-				// We reached the last chunk of A, thus B is greater than A
+			xi, yi = xn, yn
+		} else if !xDigit && !yDigit {
+			r, xn, yn := compareAlphaChunk(x, xi, y, yi)
+			if r != 0 {
+				return r
+			}
+			xi, yi = xn, yn
+		} else {
+			if xDigit {
 				return -1
-			case i == nChunksY-1:
-				// We reached the last chunk of B, thus A is greater than B
-				return 1
 			}
-
-			continue
+			return 1
 		}
-
-		return cmp.Compare(chunksX[i], chunksY[i])
 	}
-
-	return 1
 }
