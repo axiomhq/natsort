@@ -1,3 +1,16 @@
+// Package natsort provides natural-order string comparison.
+//
+// Natural ordering sorts digit runs by numeric value rather than
+// lexicographically, so "file2" < "file10" instead of "file10" < "file2".
+// This matches the ordering humans expect when sorting filenames, version
+// strings, and similar identifiers.
+//
+// Only ASCII digit sequences ('0'–'9') are treated as numeric segments;
+// non-ASCII digit-like characters such as Arabic-Indic numerals are sorted
+// as ordinary text.
+//
+// The primary entry point is [Compare], which can be passed directly to
+// [slices.SortFunc], [slices.SortedFunc], and similar functions:
 package natsort
 
 func compareNumericChunk[T ~string](x T, xi int, y T, yi int) (result, xEnd, yEnd int) {
